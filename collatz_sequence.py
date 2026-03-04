@@ -75,28 +75,46 @@ def collatz_sequence(n):
 
 def combine_key_and_hash(private_key, hex_hash):
     """
-    Core of the review paper's contribution.
-
-    XOR the private key with the image hash so that:
-        - Same key  + different image  →  different combined value
-        - Different key + same image   →  different combined value
-        - Both must match to reproduce the same parameters
+    Combines 15-digit decimal private key with 256-bit image hash
+    in a clean bit-level manner.
 
     Steps:
-        1. Convert private key (string of digits) to integer
-        2. Convert image hash (hex string)        to integer
-        3. XOR them  →  combined integer
-        4. Take first 15 decimal digits of result
+        1. Convert hex hash → 256-bit integer
+        2. Fold 256 bits → 64 bits using XOR
+        3. Take lower 60 bits
+        4. Map to 15 decimal digits using mod 10^15
+        5. XOR digit-by-digit with private key
     """
-    key_int  = int(private_key)
+
+    # ── Step 1: Convert hash to 256-bit integer ─────────────
     hash_int = int(hex_hash, 16)
 
-    # XOR — any change in image or key flips bits here
-    combined_int    = key_int ^ hash_int
-    combined_digits = str(combined_int).zfill(15)[:15]
+    # ── Step 2: Fold 256 bits → 64 bits ─────────────────────
+    # Split into four 64-bit chunks
+    mask_64 = (1 << 64) - 1
+    chunk1 = (hash_int >> 192) & mask_64
+    chunk2 = (hash_int >> 128) & mask_64
+    chunk3 = (hash_int >> 64)  & mask_64
+    chunk4 = hash_int & mask_64
 
-    return combined_digits
+    folded_64 = chunk1 ^ chunk2 ^ chunk3 ^ chunk4
 
+    # ── Step 3: Take lower 60 bits ───────────────────────────
+    mask_60 = (1 << 60) - 1
+    reduced_60 = folded_64 & mask_60
+
+    # ── Step 4: Map to exactly 15 decimal digits ─────────────
+    decimal_15 = reduced_60 % (10**15)
+    decimal_string = str(decimal_15).zfill(15)
+
+    # ── Step 5: XOR digit-by-digit with private key ─────────
+    key_digits = [int(d) for d in private_key]
+    hash_digits = [int(d) for d in decimal_string]
+
+    xor_digits = [(key_digits[i] ^ hash_digits[i]) for i in range(15)]
+
+    # Return as 15-digit string
+    return ''.join(str(d) for d in xor_digits)
 
 # ═══════════════════════════════════════════════════════════════
 # FUNCTION 3  —  parse_key_components(combined_digits)
